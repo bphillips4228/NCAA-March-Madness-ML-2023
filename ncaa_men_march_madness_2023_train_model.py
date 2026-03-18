@@ -24,7 +24,7 @@ def train_model(X, y):
 
 	grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=10, verbose=2, refit=True, n_jobs=8)
 	
-	grid_search.fit(X,y)
+	grid_search.fit(X_train, y_train)
 
 	print('Best hyperparameters:', grid_search.best_params_)
 
@@ -36,9 +36,9 @@ def train_model(X, y):
 	pickle_out.close()
 
 
-	y_pred = best_model.predict(X)
-	mse = mean_squared_error(y, y_pred)
-	logloss = log_loss(y, y_pred)
+	y_pred = best_model.predict(X_test)
+	mse = mean_squared_error(y_test, y_pred)
+	logloss = log_loss(y_test, y_pred)
 	print("Mean squared error: ", mse)
 	print("Log Loss: ", logloss)
 

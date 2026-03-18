@@ -22,7 +22,7 @@ def get_seed(team, season):
 
 def prepare_data(features):
 	features = np.array(features)
-	features = features[newaxis, :]
+	features = features[np.newaxis, :]
 	return features
 
 def predict_winner(team_1, team_2, model, season):
@@ -39,7 +39,7 @@ def get_teams(team_list, year):
 	for i in range(len(team_list)):
 			for j in range(i + 1, len(team_list)):
 				if team_list[i] < team_list[j]:
-					prediction = predict_winner(team_list[i], team_list[j], model, year, stat_fields)
+					prediction = predict_winner(team_list[i], team_list[j], model, year)
 					label = str(year) + '_' + str(team_list[i]) + '_' + str(team_list[j])
 					final_data.append([label, prediction[0]])
 
