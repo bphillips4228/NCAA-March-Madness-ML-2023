@@ -5,6 +5,21 @@ import pickle
 import random
 import math
 import csv
+from dataclasses import dataclass
+
+
+@dataclass
+class DataParams:
+	home_win_weight: float = 0.6
+	away_win_weight: float = 1.4
+	neutral_weight: float = 1.0
+	glicko_tau: float = 0.5
+	glicko_initial_rating: float = 1500
+	glicko_carryover_denom: float = 200
+	mov_cap: int = 10
+	lookback_n: int = 5
+
+DEFAULT_PARAMS = DataParams()
 
 
 team_csv_path = '../data/2023/MTeams.csv'
@@ -19,10 +34,12 @@ train_X = []
 train_y = []
 
 class Team:
-	def __init__(self, team_name, team_id, season):
+	def __init__(self, team_name, team_id, season, params=None, team_stats_ref=None):
 		self.team_name = team_name
 		self.team_id = team_id
 		self.season = season
+		self.params = params or DEFAULT_PARAMS
+		self._team_stats_ref = team_stats_ref
 		self.wins = 0
 		self.losses = 0
 		self.games_played = 0
@@ -74,19 +91,19 @@ class Team:
 		if score > opponent_score:
 			self.calculate_glicko_rating(opponent, 1)
 			if loc == 'H':
-				self.wins += .6
+				self.wins += self.params.home_win_weight
 			elif loc == 'A':
-				self.wins += 1.4
+				self.wins += self.params.away_win_weight
 			else:
-				self.wins += 1
+				self.wins += self.params.neutral_weight
 		else:
 			self.calculate_glicko_rating(opponent, 0)
 			if loc == 'H':
-				self.losses += .6
+				self.losses += self.params.home_win_weight
 			elif loc == 'A':
-				self.losses += 1.4
+				self.losses += self.params.away_win_weight
 			else:
-				self.losses += 1
+				self.losses += self.params.neutral_weight
 
 	def get_win_percentage(self):
 		if self.games_played == 0:
@@ -173,17 +190,18 @@ class Team:
 
 	def calculate_new_season_glicko_rating(self):
 		if self.season == start_year:
-			return 1500
+			return self.params.glicko_initial_rating
 
+		stats_ref = self._team_stats_ref if self._team_stats_ref is not None else team_stats
 		try:
-			for team in team_stats[self.season - 1]:
+			for team in stats_ref[self.season - 1]:
 				if team.team_id == self.team_id:
 					last_season_glicko = team.glicko_rating[-1]
 					last_season_deviation = team.glicko_deviation[-1]
-					carry_over_percentage = 1 - (last_season_deviation / (last_season_deviation + 200))
+					carry_over_percentage = 1 - (last_season_deviation / (last_season_deviation + self.params.glicko_carryover_denom))
 					return last_season_glicko * carry_over_percentage
 		except:
-			return 1500
+			return self.params.glicko_initial_rating
 
 
 	def calculate_glicko_rating(self, opponent, outcome):
@@ -193,14 +211,14 @@ class Team:
 		opponent_deviation = opponent.glicko_deviation[-1]
 
 		if opponent_rating == None:
-			opponent_rating = 1500
+			opponent_rating = self.params.glicko_initial_rating
 			opponent_deviation = 400
 
 		if team_rating == None:
-			team_rating = 1500
+			team_rating = self.params.glicko_initial_rating
 			team_deviation = 400
 
-		tau = .5
+		tau = self.params.glicko_tau
 
 		rating_difference = team_rating - opponent_rating
 
@@ -257,8 +275,8 @@ class Team:
 			for x in range(n):
 				i = last_n_points[x] - last_n_points_allowed[x]
 
-				if i > 10:
-					i = 10
+				if i > self.params.mov_cap:
+					i = self.params.mov_cap
 
 				mov.append(i)
 
@@ -271,8 +289,8 @@ class Team:
 			for x in range(self.games_played):
 				n = self.points_scored[x] - self.points_allowed[x]
 
-				if n > 10:
-					n = 10
+				if n > self.params.mov_cap:
+					n = self.params.mov_cap
 
 				mov.append(n)
 
@@ -467,7 +485,7 @@ class Team:
 		team_glicko_rating = self.glicko_rating[-1]
 
 		if team_glicko_rating == None:
-			team_glicko_rating = 1500
+			team_glicko_rating = self.params.glicko_initial_rating
 
 		features = [
 			self.get_win_percentage(),
@@ -503,7 +521,7 @@ def get_team(season, team_name, team_id):
 	for team in team_stats[season]:
 		if team.team_id == team_id:
 			return team
-	team = Team(team_name, team_id, season)
+	team = Team(team_name, team_id, season, team_stats_ref=team_stats)
 	team_stats[season].append(team)
 	return team
 
@@ -608,6 +626,75 @@ def build_season_data(all_data, team_names):
 			for i in range(len(winner_features)):
 				matchup_features.append(loser_features[i] - winner_features[i])
 			training_data.append([matchup_features, 0])
+
+
+def build_season_data_parameterized(all_data, team_names, sy=2003, py=2023, params=None):
+	"""Build features with given params. Returns (X, y, team_stats_local)."""
+	if params is None:
+		params = DEFAULT_PARAMS
+
+	team_stats_local = {}
+	for season in range(sy, py + 1):
+		team_stats_local[season] = []
+
+	def get_team_local(season, team_name, team_id):
+		for team in team_stats_local[season]:
+			if team.team_id == team_id:
+				return team
+		team = Team(team_name, team_id, season, params=params, team_stats_ref=team_stats_local)
+		team_stats_local[season].append(team)
+		return team
+
+	n = params.lookback_n
+	training_data_local = []
+
+	for index, row in all_data.iterrows():
+		season = row['Season']
+		if season < sy:
+			continue
+
+		win_team_id = row['WTeamID']
+		lose_team_id = row['LTeamID']
+		loc = row['WLoc']
+
+		win_team_name = team_names.loc[team_names['TeamID'] == win_team_id].values[0][1]
+		lose_team_name = team_names.loc[team_names['TeamID'] == lose_team_id].values[0][1]
+
+		win_team = get_team_local(season, win_team_name, win_team_id)
+		lose_team = get_team_local(season, lose_team_name, lose_team_id)
+
+		winner_features = win_team.get_features(n)
+		loser_features = lose_team.get_features(n)
+
+		win_team.add_game(
+			lose_team, row['WScore'], row['LScore'],
+			row['WFGM'], row['WFGA'], row['WFGM3'], row['WFGA3'],
+			row['WFTM'], row['WFTA'], row['WOR'], row['WDR'],
+			row['WAst'], row['WTO'], row['WStl'], row['WBlk'], row['WPF'],
+			loc, row['LDR'], row['LOR'])
+		lose_team.add_game(
+			win_team, row['LScore'], row['WScore'],
+			row['LFGM'], row['LFGA'], row['LFGM3'], row['LFGA3'],
+			row['LFTM'], row['LFTA'], row['LOR'], row['LDR'],
+			row['LAst'], row['LTO'], row['LStl'], row['LBlk'], row['LPF'],
+			loc, row['WDR'], row['WOR'])
+
+		matchup_features = []
+		if index % 2 == 0:
+			for i in range(len(winner_features)):
+				matchup_features.append(winner_features[i] - loser_features[i])
+			training_data_local.append([matchup_features, 1])
+		else:
+			for i in range(len(winner_features)):
+				matchup_features.append(loser_features[i] - winner_features[i])
+			training_data_local.append([matchup_features, 0])
+
+	random.seed(42)
+	random.shuffle(training_data_local)
+
+	X = [f for f, _ in training_data_local]
+	y = [l for _, l in training_data_local]
+	return np.array(X), np.array(y), team_stats_local
 
 
 team_stats = initiate_data(start_year, prediction_year)
