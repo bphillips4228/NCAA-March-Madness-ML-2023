@@ -1,28 +1,44 @@
 import numpy as np
 import pickle
 
-from xgboost import XGBClassifier
+try:
+	from xgboost import XGBRegressor
+	USE_XGB = True
+except ImportError:
+	from sklearn.ensemble import GradientBoostingRegressor
+	USE_XGB = False
+	print("XGBoost not available, using sklearn GradientBoostingRegressor")
+
 from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.metrics import accuracy_score, log_loss
+from sklearn.metrics import mean_squared_error, log_loss
 
 def train_model(X, y):
-	param_grid = {
-		'n_estimators': [100, 300],
-		'max_depth': [3, 5, 7],
-		'learning_rate': [0.01, 0.1],
-		'subsample': [0.8],
-		'colsample_bytree': [0.8],
-		'min_child_weight': [1, 3],
-	}
+	if USE_XGB:
+		param_grid = {
+			'n_estimators': [100, 300],
+			'max_depth': [3, 5, 7],
+			'learning_rate': [0.01, 0.1],
+			'subsample': [0.8],
+			'colsample_bytree': [0.8],
+			'min_child_weight': [1, 3],
+		}
+		model = XGBRegressor(random_state=42, objective='reg:logistic')
+	else:
+		param_grid = {
+			'n_estimators': [100, 300],
+			'max_depth': [3, 5, 7],
+			'learning_rate': [0.01, 0.1],
+			'subsample': [0.8],
+			'min_samples_leaf': [1, 3],
+		}
+		model = GradientBoostingRegressor(random_state=42, loss='squared_error')
 
 	X = np.array(X)
 	y = np.array(y)
 
 	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
 
-	model = XGBClassifier(random_state=42, eval_metric='logloss')
-
-	grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='neg_log_loss', verbose=2, refit=True, n_jobs=-1)
+	grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='neg_mean_squared_error', verbose=2, refit=True, n_jobs=-1)
 
 	grid_search.fit(X_train, y_train)
 
@@ -34,10 +50,10 @@ def train_model(X, y):
 		pickle.dump(best_model, f)
 
 	y_pred = best_model.predict(X_test)
-	y_pred_proba = best_model.predict_proba(X_test)[:, 1]
-	accuracy = accuracy_score(y_test, y_pred)
-	logloss = log_loss(y_test, y_pred_proba)
-	print("Accuracy: ", accuracy)
+	y_pred_clipped = np.clip(y_pred, 0, 1)
+	mse = mean_squared_error(y_test, y_pred_clipped)
+	logloss = log_loss(y_test, y_pred_clipped)
+	print("Mean Squared Error: ", mse)
 	print("Log Loss: ", logloss)
 
 
