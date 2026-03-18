@@ -33,7 +33,7 @@ def predict_winner(team_1, team_2, model, season):
 
 	prepared_data = prepare_data(matchup_features)
 
-	return model.predict(prepared_data)
+	return model.predict_proba(prepared_data)[:, 1]
 
 def get_teams(team_list, year):
 	for i in range(len(team_list)):

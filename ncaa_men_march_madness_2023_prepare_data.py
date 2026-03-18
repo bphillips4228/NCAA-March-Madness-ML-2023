@@ -11,7 +11,7 @@ team_csv_path = '../data/2023/MTeams.csv'
 season_csv_path = '../data/2023/MRegularSeasonDetailedResults.csv'
 tournament_csv_path = '../data/2023/MNCAATourneyDetailedResults.csv'
 
-start_year = 2018
+start_year = 2003
 prediction_year = 2023
 
 training_data = []
@@ -47,8 +47,9 @@ class Team:
 		self.offensive_efficiency = []
 		self.defensive_efficiency = []
 		self.opponents_def_rebounds = []
+		self.opponents_off_rebounds = []
 		
-	def add_game(self, opponent, score, opponent_score, fgm, fga, fgm3, fga3, ftm, fta, off_rebounds, def_rebounds, assists, turnovers, steals, blocks, fouls, loc, opp_def_rebounds):
+	def add_game(self, opponent, score, opponent_score, fgm, fga, fgm3, fga3, ftm, fta, off_rebounds, def_rebounds, assists, turnovers, steals, blocks, fouls, loc, opp_def_rebounds, opp_off_rebounds):
 		self.games_played += 1
 		self.points_scored.append(score)
 		self.points_allowed.append(opponent_score)
@@ -69,6 +70,7 @@ class Team:
 		self.offensive_efficiency.append(self.get_offensive_efficiency())
 		self.defensive_efficiency.append(self.get_defensive_efficiency())
 		self.opponents_def_rebounds.append(opp_def_rebounds)
+		self.opponents_off_rebounds.append(opp_off_rebounds)
 		if score > opponent_score:
 			self.calculate_glicko_rating(opponent, 1)
 			if loc == 'H':
@@ -401,10 +403,65 @@ class Team:
 			freethrow_rates = []
 
 			for x in range(self.games_played):
-				i = last_n_fta[x] / last_n_fga[x]
+				i = self.ft_attempts[x] / self.fg_attempts[x]
 				freethrow_rates.append(i)
 
 			return sum(freethrow_rates) / len(freethrow_rates)
+
+	def get_offensive_efficiency_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		return sum(self.offensive_efficiency[-n:]) / n
+
+	def get_defensive_efficiency_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		return sum(self.defensive_efficiency[-n:]) / n
+
+	def get_three_point_rate_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		total_fga = sum(self.fg_attempts[-n:])
+		if total_fga == 0:
+			return 0
+		return sum(self.fg3_attempts[-n:]) / total_fga
+
+	def get_assist_to_turnover_ratio_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		total_to = sum(self.turnovers[-n:])
+		if total_to == 0:
+			return 0
+		return sum(self.assists[-n:]) / total_to
+
+	def get_defensive_rebound_percentage_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		last_n_dr = self.def_rebounds[-n:]
+		last_n_opp_or = self.opponents_off_rebounds[-n:]
+		rates = []
+		for dr, opp_or in zip(last_n_dr, last_n_opp_or):
+			denom = dr + opp_or
+			if denom > 0:
+				rates.append(dr / denom)
+		return sum(rates) / len(rates) if rates else 0
+
+	def get_steal_rate_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		return sum(self.steals[-n:]) / n
+
+	def get_block_rate_last_n(self, n):
+		if self.games_played == 0:
+			return 0
+		n = min(n, self.games_played)
+		return sum(self.blocks[-n:]) / n
 
 	def get_features(self, n):
 		team_glicko_rating = self.glicko_rating[-1]
@@ -412,16 +469,24 @@ class Team:
 		if team_glicko_rating == None:
 			team_glicko_rating = 1500
 
-		features = [self.get_win_percentage(),
-		self.calculate_strength_of_schedule(),
-		team_glicko_rating,
-		self.get_opponent_glicko_last_n(n),
-		self.get_margin_of_victory_last_n(n),
-		self.get_efficiency_last_n(n),
-		self.get_effective_field_goal_percentage_last_n(n),
-		self.get_turnover_percentage_last_n(n),
-		self.get_offensive_rebound_percentage_last_n(n),
-		self.get_freethrow_rate_last_n(n)]
+		features = [
+			self.get_win_percentage(),
+			self.calculate_strength_of_schedule(),
+			team_glicko_rating,
+			self.get_opponent_glicko_last_n(n),
+			self.get_margin_of_victory_last_n(n),
+			self.get_offensive_efficiency_last_n(n),
+			self.get_defensive_efficiency_last_n(n),
+			self.get_effective_field_goal_percentage_last_n(n),
+			self.get_turnover_percentage_last_n(n),
+			self.get_offensive_rebound_percentage_last_n(n),
+			self.get_defensive_rebound_percentage_last_n(n),
+			self.get_freethrow_rate_last_n(n),
+			self.get_three_point_rate_last_n(n),
+			self.get_assist_to_turnover_ratio_last_n(n),
+			self.get_steal_rate_last_n(n),
+			self.get_block_rate_last_n(n),
+		]
 
 		return features
 
@@ -488,9 +553,9 @@ def build_season_data(all_data, team_names):
 		win_team = get_team(season, win_team_name, win_team_id)
 		lose_team = get_team(season, lose_team_name, lose_team_id)
 
-		winner_features = win_team.get_features(3)
+		winner_features = win_team.get_features(5)
 
-		loser_features = lose_team.get_features(3)
+		loser_features = lose_team.get_features(5)
 
 		win_team.add_game(
 			lose_team,
@@ -510,7 +575,8 @@ def build_season_data(all_data, team_names):
 			row['WBlk'],
 			row['WPF'],
 			loc,
-			row['LDR'])
+			row['LDR'],
+			row['LOR'])
 		lose_team.add_game(
 			win_team,
 			row['LScore'],
@@ -529,7 +595,8 @@ def build_season_data(all_data, team_names):
 			row['LBlk'],
 			row['LPF'],
 			loc,
-			row['WDR'])
+			row['WDR'],
+			row['WOR'])
 
 		matchup_features = []
 
@@ -549,8 +616,8 @@ season_data = pd.read_csv(season_csv_path)
 tournament_data = pd.read_csv(tournament_csv_path)
 team_names = pd.read_csv(team_csv_path)
 
-all_data = season_data.append(tournament_data, ignore_index=True)
-all_data.sort_values(by=['Season', 'DayNum'])
+all_data = pd.concat([season_data, tournament_data], ignore_index=True)
+all_data = all_data.sort_values(by=['Season', 'DayNum'])
 
 build_season_data(all_data, team_names)
 random.shuffle(training_data)
