@@ -1,26 +1,42 @@
 import numpy as np
 import pickle
 
-from xgboost import XGBClassifier
+try:
+	from xgboost import XGBClassifier
+	USE_XGB = True
+except ImportError:
+	from sklearn.ensemble import GradientBoostingClassifier
+	USE_XGB = False
+	print("XGBoost not available, using sklearn GradientBoostingClassifier")
+
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.metrics import accuracy_score, log_loss
 
 def train_model(X, y):
-	param_grid = {
-		'n_estimators': [100, 300],
-		'max_depth': [3, 5, 7],
-		'learning_rate': [0.01, 0.1],
-		'subsample': [0.8],
-		'colsample_bytree': [0.8],
-		'min_child_weight': [1, 3],
-	}
+	if USE_XGB:
+		param_grid = {
+			'n_estimators': [100, 300],
+			'max_depth': [3, 5, 7],
+			'learning_rate': [0.01, 0.1],
+			'subsample': [0.8],
+			'colsample_bytree': [0.8],
+			'min_child_weight': [1, 3],
+		}
+		model = XGBClassifier(random_state=42, eval_metric='logloss')
+	else:
+		param_grid = {
+			'n_estimators': [100, 300],
+			'max_depth': [3, 5, 7],
+			'learning_rate': [0.01, 0.1],
+			'subsample': [0.8],
+			'min_samples_leaf': [1, 3],
+		}
+		model = GradientBoostingClassifier(random_state=42)
 
 	X = np.array(X)
 	y = np.array(y)
 
 	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-
-	model = XGBClassifier(random_state=42, eval_metric='logloss')
 
 	grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='neg_log_loss', verbose=2, refit=True, n_jobs=-1)
 
