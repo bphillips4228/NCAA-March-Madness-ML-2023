@@ -77,11 +77,11 @@ class Team:
 				self.wins += 1.4
 			else:
 				self.wins += 1
-		else: 
+		else:
 			self.calculate_glicko_rating(opponent, 0)
-			if loc == 'A':
+			if loc == 'H':
 				self.losses += .6
-			elif loc == 'H':
+			elif loc == 'A':
 				self.losses += 1.4
 			else:
 				self.losses += 1
@@ -269,10 +269,10 @@ class Team:
 			for x in range(self.games_played):
 				n = self.points_scored[x] - self.points_allowed[x]
 
-				if i > 10:
-					i = 10
+				if n > 10:
+					n = 10
 
-				mov.append(i)
+				mov.append(n)
 
 			return sum(mov) / len(mov)
 
@@ -324,7 +324,7 @@ class Team:
 			efgp = []
 
 			for x in range(self.games_played):
-				i = (self.fg_made[x] + (0.5 * self.fg3_made[x]) / self.fg_attempts[x])
+				i = (self.fg_made[x] + (0.5 * self.fg3_made[x])) / self.fg_attempts[x]
 				efgp.append(i)
 
 			return sum(efgp) / len(efgp)
@@ -519,7 +519,7 @@ def build_season_data(all_data, team_names):
 			row['LFGA'],
 			row['LFGM3'],
 			row['LFGA3'],
-			row['WFTM'],
+			row['LFTM'],
 			row['LFTA'],
 			row['LOR'],
 			row['LDR'],
