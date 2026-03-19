@@ -1,14 +1,25 @@
 import pandas as pd
 import math
 import csv
+import os
 import numpy as np
 import pickle
+
+from ncaa_men_march_madness_2023_prepare_data import DataParams, DEFAULT_PARAMS
 
 team_stats = pickle.load(open("../Pickles/team_stats.pickle", "rb"))
 team_seeds = {}
 final_data = []
 prediction_year = 2023
 prediction_range = [2023]
+
+# Load best params from grid search if available, otherwise use defaults
+params_path = "../Pickles/best_params.pickle"
+if os.path.exists(params_path):
+	params = pickle.load(open(params_path, "rb"))
+	print(f"Loaded params: lookback_n={params.lookback_n}")
+else:
+	params = DEFAULT_PARAMS
 
 def init_data():
 	for i in range(prediction_range[0], prediction_year+1):
@@ -26,8 +37,8 @@ def prepare_data(features):
 	return features
 
 def predict_winner(team_1, team_2, model, season):
-	team_1_features = team_1.get_features(5)
-	team_2_features = team_2.get_features(5)
+	team_1_features = team_1.get_features(params.lookback_n)
+	team_2_features = team_2.get_features(params.lookback_n)
 
 	matchup_features = [a - b for a, b in zip(team_1_features, team_2_features)]
 
